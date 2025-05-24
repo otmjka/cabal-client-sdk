@@ -1,0 +1,26 @@
+{
+  "name": "cabal-client-sdk",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "dependencies": {
+    "@connectrpc/connect": "^2.0.2",
+    "@connectrpc/connect-web": "^2.0.2",
+    "events": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/events": "^3.0.3",
+    "prettier": "^3.5.3",
+    "typescript": "^5.7.2"
+  },
+  "scripts": {
+    "build": "tsc"
+  }
+}
