@@ -1,4 +1,4 @@
-import { Pong } from '.';
+import { Direction, Pong, Side, Trigger } from '.';
 import { CabalStreamEvents } from './CabalStream';
 
 export enum streamNames {
@@ -19,6 +19,7 @@ export interface CabalServiceOpts<StreamResponse> {
   streamPinger: (params: { count: bigint }) => Promise<Pong>;
 
   debug?: boolean;
+  debugShowPing?: boolean;
 }
 
 export type CabalStreamEventsHandler = (
@@ -36,6 +37,7 @@ export enum CabalUserActivityStreamMessages {
   userActivityError = 'userActivityError',
 
   tradeStats = 'tradeStats',
+  txnCb = 'txnCb',
 }
 
 export enum CabalTradeStreamMessages {
@@ -51,3 +53,47 @@ export enum CabalTradeStreamMessages {
   tradeEvent = 'tradeEvent',
   tokenStatus = 'tokenStatus',
 }
+
+export enum TargetTypeCase {
+  price = 'price',
+  profit = 'profit',
+  movingPerc = 'movingPerc',
+  market = 'market',
+}
+
+export enum AmountCase {
+  percBps = 'percBps',
+  fixed = 'fixed',
+}
+
+export type ApiOrderParsed = {
+  mint: string;
+  id?: string;
+  slippageBps: number;
+  tip: string; // bigint
+  side: Side;
+
+  // target
+  targetTypeCase?: TargetTypeCase | undefined;
+
+  // "price"
+  targetTypeValuePrice?: number;
+
+  // "profit"
+  targetTypeValueProfitPerc?: number;
+
+  // "movingPerc"
+  targetTypeValuePricePerc?: number;
+  targetTypeValueLocalAth?: number;
+  // "price" + "profit" + "movingPerc"
+  targetTypeValueDirection?: Direction;
+
+  // amount
+
+  amountCase?: AmountCase;
+  amountPercBps?: number;
+
+  amountFixed?: string; // bigint
+
+  trigger: Trigger;
+};

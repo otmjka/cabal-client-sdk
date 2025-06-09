@@ -11,11 +11,14 @@ import {
   CabalStreamEventsHandler,
   streamNames,
   CabalTradeStreamMessages,
+  ApiOrderParsed,
 } from './CabalServiceTypes';
 
 import { CabalUserActivityStreamMessages, Direction, Side, Trigger } from '.';
 import { defaultState } from './cabalEnums';
-import { toLamports } from './utils';
+import { toLamports } from '../../widgets/TradeWidget/helpers/toLamports';
+import { ApiOrder } from './cabal/CabalRpc/orders_pb';
+import { parseApiOrder } from './utils/parseApiOrder';
 
 class CabalService extends EventEmitter {
   client: ReturnType<typeof createGRPCCabalClient>;
@@ -116,35 +119,57 @@ class CabalService extends EventEmitter {
     }
   }
   // CabalRpc -> PlaceLimitOrders
-  async placeLimitOrders({ mint }: { mint: string }) {
+  async placeLimitOrders({
+    mint,
+    priceOneTokenInSol,
+    slippageBps,
+    tip,
+    targetType = 'price',
+    direction,
+    side,
+    amountType,
+    amountValue,
+    trigger,
+  }: {
+    mint: string;
+    slippageBps: number;
+    tip: number;
+    targetType: 'price';
+    priceOneTokenInSol: number;
+    direction: Direction;
+    side: Side;
+    amountType: 'percBps';
+    amountValue: number;
+    trigger: Trigger;
+  }) {
     try {
-      debugger;
       const result = await this.client.placeLimitOrders({
         mint, // 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
         orders: [
           {
             // id?
-            slippageBps: defaultState.sell_slippage, // 20
-            tip: toLamports(defaultState.sell_tip), // 0.001 * 1_000_000_000
+            slippageBps: slippageBps, // 20
+            tip: toLamports(tip), // 0.001 * 1_000_000_000
             target: {
               targetType: {
-                case: 'price',
+                case: targetType,
                 value: {
-                  price: 0.0027, // цена в SOL
-                  direction: Direction.ABOVE,
+                  price: priceOneTokenInSol, // цена в SOL
+                  direction,
                 },
               },
             },
-            side: Side.SELL,
+            side,
             amount: {
               amountType: {
-                case: 'percBps',
-                value: 500, // 10%
+                case: amountType,
+                value: amountValue, // 500, // 10%
                 // case: 'fixed'
                 // value: 1_000_000_000n, // 1 POPCAT, 9 decimals
               },
             },
-            trigger: Trigger.IMMEDIATE,
+            // trigger: Trigger.IMMEDIATE,
+            trigger,
           },
         ],
       });
@@ -159,7 +184,6 @@ class CabalService extends EventEmitter {
   // CabalRpc -> MarketSell
   async marketSell({ mint, percents }: { mint: string; percents: number }) {
     try {
-      debugger;
       if (percents > 100 || percents <= 0) {
         throw new Error('should be in range of [0;100]');
       }
@@ -187,7 +211,6 @@ class CabalService extends EventEmitter {
     mint: string;
   }) {
     try {
-      debugger;
       const buyParams = {
         amount: toLamports(amount),
         mint,
@@ -196,17 +219,7 @@ class CabalService extends EventEmitter {
       };
       console.log('### buy params', buyParams);
       const result = await this.client.marketBuy(buyParams);
-      // {
-      //   amount,
-      //   mint,
-      //   slippageBps: defaultState.buy_slippage,
-      //   tip: toLamports(defaultState.buy_tip),
-      //   // priorityFee,
-      //   // nonce,
-      //   // slotLatency,
-      //   // expireAt,
-      //   // qouteKind,
-      // });
+
       console.log('buy', result);
       return result;
     } catch (error) {
@@ -215,8 +228,34 @@ class CabalService extends EventEmitter {
   }
   // CabalRpc -> GetTokenLimitOrders
 
+  async getTokenLimitOrders({
+    mint,
+  }: {
+    mint: string;
+  }): Promise<ApiOrderParsed[] | undefined> {
+    try {
+      const result = await this.client.getTokenLimitOrders({ mint });
+
+      const resultMint = result?.mint;
+      const resultOrders = result?.orders.map((order: ApiOrder) => {
+        return parseApiOrder({ apiOrder: order, mint: resultMint });
+      });
+      return resultOrders;
+    } catch (error) {
+      console.error(`getTokenLimitOrders`, error);
+    }
+  }
   // CabalRpc -> DeleteLimitOrders
 
+  async deleteLimitOrders({ mint, ids }: { mint: string; ids: string[] }) {
+    try {
+      const idsn = ids.map((item) => BigInt(item));
+      const result = await this.client.deleteLimitOrders({ mint, ids: idsn });
+      return result;
+    } catch (error) {
+      console.error(`deleteLimitOrders`, error);
+    }
+  }
   /* 
     private 
   */
@@ -235,7 +274,7 @@ class CabalService extends EventEmitter {
       case CabalStreamEvents.error:
         console.error('[[CabalService]]: trade stream error');
         this.stop();
-        this.emit(CabalTradeStreamMessages.tradeError);
+        this.emit(CabalTradeStreamMessages.tradeError, messagePayload);
         break;
       case CabalStreamEvents.message:
         this.processTradeMessage(messagePayload as TradeEventResponse);
@@ -261,7 +300,10 @@ class CabalService extends EventEmitter {
       case CabalStreamEvents.error:
         console.error('[[CabalService]]: UA stream error');
         this.stop();
-        this.emit(CabalUserActivityStreamMessages.userActivityError);
+        this.emit(
+          CabalUserActivityStreamMessages.userActivityError,
+          messagePayload,
+        );
         break;
       case CabalStreamEvents.message:
         this.processUserActivityMessage(messagePayload as UserResponse);
@@ -285,6 +327,10 @@ class CabalService extends EventEmitter {
         );
         break;
       case 'txnCb':
+        this.emit(
+          CabalUserActivityStreamMessages.txnCb,
+          message.userResponseKind,
+        );
         break;
       case 'ping':
         break;
